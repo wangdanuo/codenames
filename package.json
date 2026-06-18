@@ -1,0 +1,66 @@
+{
+	"name": "translator-helper",
+	"displayName": "Translator Helper",
+	"description": "中英文翻译 & 命名格式生成助手，支持自定义词典、部分匹配，一键生成 6 种常用命名格式",
+	"version": "0.0.2",
+	"publisher": "YOUR_PUBLISHER_NAME",
+	"license": "MIT",
+  "icon": "resources/icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wangdanuo/translator-helper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wangdanuo/translator-helper/issues"
+  },
+  "homepage": "https://github.com/wangdanuo/translator-helper#readme",
+	"engines": {
+		"vscode": "^1.75.0"
+	},
+	"main": "./out/extension.js",
+	"categories": [
+		"Other"
+	],
+	"keywords": [
+		"translate",
+		"naming",
+		"camelCase",
+		"snake_case",
+		"kebab-case",
+		"翻译",
+		"命名",
+		"词典"
+	],
+	"activationEvents": [
+		"onView:translator.sidebar.view"
+	],
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "translator-sidebar",
+					"title": "Translator",
+					"icon": "resources/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"translator-sidebar": [
+				{
+					"type": "webview",
+					"id": "translator.sidebar.view",
+					"name": "翻译助手"
+				}
+			]
+		}
+	},
+	"scripts": {
+		"compile": "tsc -p ./",
+		"package": "vsce package"
+	},
+	"devDependencies": {
+		"@types/node": "^18",
+		"@types/vscode": "^1.75.0",
+		"typescript": "^5.0.0"
+	}
+}
