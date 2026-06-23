@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { getWebviewContent } from './webview/panel';
 
 /**
@@ -35,6 +36,11 @@ class TranslatorSidebarProvider implements vscode.WebviewViewProvider {
                     removeDictEntry(message.zh, this.context);
                     sendDict(webview, this.context);
                     break;
+                case 'openExternal':
+                    if (typeof message.url === 'string' && /^https?:\/\//.test(message.url)) {
+                        vscode.env.openExternal(vscode.Uri.parse(message.url));
+                    }
+                    break;
             }
         });
     }
@@ -42,7 +48,67 @@ class TranslatorSidebarProvider implements vscode.WebviewViewProvider {
 
 // ==================== 翻译逻辑 ====================
 
-const TRANSLATE_API = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=';
+const GOOGLE_TRANSLATE_API = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=';
+const BAIDU_TRANSLATE_API = 'https://fanyi-api.baidu.com/api/trans/vip/translate';
+
+function md5(input: string): string {
+    return crypto.createHash('md5').update(input).digest('hex');
+}
+
+interface BaiduConfig { appid: string; secret: string; }
+
+function getBaiduConfig(): BaiduConfig {
+    const config = vscode.workspace.getConfiguration('codenames');
+    return {
+        appid: config.get<string>('baiduAppId', '').trim(),
+        secret: config.get<string>('baiduSecret', '').trim(),
+    };
+}
+
+async function translateByGoogle(text: string): Promise<string> {
+    const response = await fetch(GOOGLE_TRANSLATE_API + encodeURIComponent(text));
+    if (!response.ok) {
+        throw new Error(`Google 翻译 HTTP ${response.status}`);
+    }
+    const json: unknown = await response.json();
+    if (!Array.isArray(json) || !Array.isArray(json[0])) {
+        throw new Error('Google 翻译返回数据格式异常');
+    }
+    const translated = (json[0] as unknown[])
+        .map(seg => (Array.isArray(seg) && seg.length > 0 ? String(seg[0] ?? '') : ''))
+        .join('')
+        .trim();
+    if (!translated) {
+        throw new Error('Google 翻译返回为空');
+    }
+    return translated;
+}
+
+interface BaiduTransResult { dst?: string }
+interface BaiduResponse { error_code?: string; error_msg?: string; trans_result?: BaiduTransResult[] }
+
+async function translateByBaidu(text: string, appid: string, secret: string): Promise<string> {
+    const salt = Date.now().toString();
+    const sign = md5(appid + text + salt + secret);
+    const params = new URLSearchParams({ q: text, from: 'zh', to: 'en', appid, salt, sign });
+    const response = await fetch(BAIDU_TRANSLATE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+    });
+    const json = await response.json() as BaiduResponse;
+    if (json.error_code) {
+        throw new Error(`百度翻译错误 ${json.error_code}: ${json.error_msg || ''}`.trim());
+    }
+    if (!Array.isArray(json.trans_result) || json.trans_result.length === 0) {
+        throw new Error('百度翻译返回数据格式异常');
+    }
+    const translated = json.trans_result.map(seg => seg.dst || '').join('').trim();
+    if (!translated) {
+        throw new Error('百度翻译返回为空');
+    }
+    return translated;
+}
 
 async function handleTranslate(text: string, webview: vscode.Webview, context: vscode.ExtensionContext) {
     try {
@@ -65,12 +131,15 @@ async function handleTranslate(text: string, webview: vscode.Webview, context: v
             }
         }
 
-        // 3. 在线翻译（如果还有中文，确保全部翻译）
+        // 3. 在线翻译（如果还有中文，确保全部翻译；配置了百度 key 则优先使用）
         if (!english || /[\u4e00-\u9fff]/.test(english)) {
             const targetText = english || text;
-            const response = await fetch(TRANSLATE_API + encodeURIComponent(targetText));
-            const json = await response.json();
-            english = json[0][0][0].trim();
+            const { appid, secret } = getBaiduConfig();
+            if (appid && secret) {
+                english = await translateByBaidu(targetText, appid, secret);
+            } else {
+                english = await translateByGoogle(targetText);
+            }
         }
 
         // 生成 6 种命名格式
@@ -85,8 +154,9 @@ async function handleTranslate(text: string, webview: vscode.Webview, context: v
         ];
 
         webview.postMessage({ type: 'result', results });
-    } catch {
-        webview.postMessage({ type: 'error', msg: '翻译失败，请检查网络' });
+    } catch (err) {
+        const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
+        webview.postMessage({ type: 'error', msg: `翻译失败，请检查网络${detail}` });
     }
 }
 

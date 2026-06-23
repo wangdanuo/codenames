@@ -1,6 +1,41 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getWebviewContent = getWebviewContent;
+const vscode = __importStar(require("vscode"));
+const pkg = require('../../package.json');
 /**
  * 生成侧边栏 Webview 的 HTML 内容
  * 词典数据通过模板注入，避免额外的消息请求
@@ -8,6 +43,13 @@ exports.getWebviewContent = getWebviewContent;
 function getWebviewContent(context) {
     const dict = context.globalState.get('customDict', {});
     const dictJson = JSON.stringify(dict);
+    const config = vscode.workspace.getConfiguration('codenames');
+    const baiduAppId = config.get('baiduAppId', '').trim();
+    const baiduSecret = config.get('baiduSecret', '').trim();
+    const engineName = baiduAppId && baiduSecret ? '百度翻译' : 'Google(国内可能不稳定)';
+    const engineBlock = baiduAppId && baiduSecret
+        ? '<div class="hint" style="margin-top:0">百度翻译已启用</div>'
+        : '<div class="hint" style="margin-top:0">前往 <a href="https://api.fanyi.baidu.com/manage/developer">百度翻译开放平台</a> 注册并创建「通用翻译」类型的应用,获取 APP ID 与密钥后填入 <code>codenames.baiduAppId</code> 与 <code>codenames.baiduSecret</code>。</div>';
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -158,6 +200,15 @@ function getWebviewContent(context) {
             margin-top: 8px;
         }
 
+        .hint a {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: underline;
+        }
+
+        .hint a:hover {
+            color: var(--vscode-textLink-activeForeground);
+        }
+
         .small-btn {
             padding: 4px 10px;
             font-size: 11px;
@@ -180,8 +231,10 @@ function getWebviewContent(context) {
             border-bottom: 1px solid var(--border);
             font-size: 12px;
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
+            gap: 6px 8px;
         }
 
         .dict-item:last-child {
@@ -190,7 +243,9 @@ function getWebviewContent(context) {
 
         .dict-item .dict-text {
             cursor: pointer;
-            flex: 1;
+            flex: 1 1 100px;
+            min-width: 0;
+            word-break: break-all;
         }
 
         .dict-item .dict-text:hover {
@@ -205,7 +260,7 @@ function getWebviewContent(context) {
             background: transparent;
             color: var(--text-sub);
             cursor: pointer;
-            margin-left: 8px;
+            flex-shrink: 0;
         }
 
         .dict-item .remove-btn:hover {
@@ -216,12 +271,14 @@ function getWebviewContent(context) {
 
         .dict-form {
             display: flex;
+            flex-wrap: wrap;
             gap: 6px;
             margin-bottom: 10px;
         }
 
         .dict-form input {
-            flex: 1;
+            flex: 1 1 100px;
+            min-width: 0;
             padding: 6px 8px;
             border-radius: 6px;
             border: 1px solid var(--border);
@@ -264,6 +321,14 @@ function getWebviewContent(context) {
         </div>
         <div id="dict-list"></div>
     </div>
+
+    <div class="card">
+        <span class="card-title">⚙️ 翻译源</span>
+        <div class="hint" style="margin-top:0">当前: <strong>${engineName}</strong></div>
+        ${engineBlock}
+    </div>
+
+    <div style="text-align:center; margin-top:8px; font-size:10px; color:var(--text-sub);">v${pkg.version}</div>
 
     <script>
         const vscode = acquireVsCodeApi();
@@ -405,8 +470,15 @@ function getWebviewContent(context) {
         currentDict = ${dictJson};
         renderDict();
         inp.focus();
+
+        // 外链点击交给扩展通过系统浏览器打开
+        document.querySelectorAll('a[href^="http"]').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                vscode.postMessage({ command: 'openExternal', url: a.href });
+            });
+        });
     </script>
-    <div style="text-align:center; margin-top:8px; font-size:10px; color:var(--text-sub);">v0.0.2</div>
 </body>
 </html>`;
 }

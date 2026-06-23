@@ -2,7 +2,7 @@
 	"name": "codenames",
 	"displayName": "CodeNames",
 	"description": "中英文翻译 & 命名格式生成助手，支持自定义词典、部分匹配，一键生成 6 种常用命名格式",
-	"version": "0.0.6",
+	"version": "0.0.7",
 	"publisher": "wangdanuo",
 	"license": "MIT",
 	"icon": "resources/anbocaixiang.png",
@@ -52,6 +52,21 @@
 					"name": "翻译助手"
 				}
 			]
+		},
+		"configuration": {
+			"title": "CodeNames",
+			"properties": {
+				"codenames.baiduAppId": {
+					"type": "string",
+					"default": "",
+					"description": "百度翻译开放平台 APP ID(配置后优先使用百度翻译,国内更稳定)"
+				},
+				"codenames.baiduSecret": {
+					"type": "string",
+					"default": "",
+					"description": "百度翻译开放平台 密钥(与 APP ID 配套使用)"
+				}
+			}
 		}
 	},
 	"scripts": {

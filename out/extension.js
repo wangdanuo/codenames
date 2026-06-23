@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const crypto = __importStar(require("crypto"));
 const panel_1 = require("./webview/panel");
 /**
  * 翻译助手 - 侧边栏 Webview View Provider
@@ -64,13 +65,69 @@ class TranslatorSidebarProvider {
                     removeDictEntry(message.zh, this.context);
                     sendDict(webview, this.context);
                     break;
+                case 'openExternal':
+                    if (typeof message.url === 'string' && /^https?:\/\//.test(message.url)) {
+                        vscode.env.openExternal(vscode.Uri.parse(message.url));
+                    }
+                    break;
             }
         });
     }
 }
 TranslatorSidebarProvider.viewType = 'codenames.sidebar.view';
 // ==================== 翻译逻辑 ====================
-const TRANSLATE_API = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=';
+const GOOGLE_TRANSLATE_API = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=';
+const BAIDU_TRANSLATE_API = 'https://fanyi-api.baidu.com/api/trans/vip/translate';
+function md5(input) {
+    return crypto.createHash('md5').update(input).digest('hex');
+}
+function getBaiduConfig() {
+    const config = vscode.workspace.getConfiguration('codenames');
+    return {
+        appid: config.get('baiduAppId', '').trim(),
+        secret: config.get('baiduSecret', '').trim(),
+    };
+}
+async function translateByGoogle(text) {
+    const response = await fetch(GOOGLE_TRANSLATE_API + encodeURIComponent(text));
+    if (!response.ok) {
+        throw new Error(`Google 翻译 HTTP ${response.status}`);
+    }
+    const json = await response.json();
+    if (!Array.isArray(json) || !Array.isArray(json[0])) {
+        throw new Error('Google 翻译返回数据格式异常');
+    }
+    const translated = json[0]
+        .map(seg => (Array.isArray(seg) && seg.length > 0 ? String(seg[0] ?? '') : ''))
+        .join('')
+        .trim();
+    if (!translated) {
+        throw new Error('Google 翻译返回为空');
+    }
+    return translated;
+}
+async function translateByBaidu(text, appid, secret) {
+    const salt = Date.now().toString();
+    const sign = md5(appid + text + salt + secret);
+    const params = new URLSearchParams({ q: text, from: 'zh', to: 'en', appid, salt, sign });
+    const response = await fetch(BAIDU_TRANSLATE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+    });
+    const json = await response.json();
+    if (json.error_code) {
+        throw new Error(`百度翻译错误 ${json.error_code}: ${json.error_msg || ''}`.trim());
+    }
+    if (!Array.isArray(json.trans_result) || json.trans_result.length === 0) {
+        throw new Error('百度翻译返回数据格式异常');
+    }
+    const translated = json.trans_result.map(seg => seg.dst || '').join('').trim();
+    if (!translated) {
+        throw new Error('百度翻译返回为空');
+    }
+    return translated;
+}
 async function handleTranslate(text, webview, context) {
     try {
         const dict = context.globalState.get('customDict', {});
@@ -89,12 +146,16 @@ async function handleTranslate(text, webview, context) {
                 english = translated;
             }
         }
-        // 3. 在线翻译（如果还有中文，确保全部翻译）
+        // 3. 在线翻译（如果还有中文，确保全部翻译；配置了百度 key 则优先使用）
         if (!english || /[\u4e00-\u9fff]/.test(english)) {
             const targetText = english || text;
-            const response = await fetch(TRANSLATE_API + encodeURIComponent(targetText));
-            const json = await response.json();
-            english = json[0][0][0].trim();
+            const { appid, secret } = getBaiduConfig();
+            if (appid && secret) {
+                english = await translateByBaidu(targetText, appid, secret);
+            }
+            else {
+                english = await translateByGoogle(targetText);
+            }
         }
         // 生成 6 种命名格式
         const words = english.split(/[\s\-_]+/).filter(Boolean);
@@ -108,8 +169,9 @@ async function handleTranslate(text, webview, context) {
         ];
         webview.postMessage({ type: 'result', results });
     }
-    catch {
-        webview.postMessage({ type: 'error', msg: '翻译失败，请检查网络' });
+    catch (err) {
+        const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
+        webview.postMessage({ type: 'error', msg: `翻译失败，请检查网络${detail}` });
     }
 }
 // ==================== 命名转换 ====================

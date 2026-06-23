@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 
+const pkg = require('../../package.json') as { version: string };
+
 /**
  * 生成侧边栏 Webview 的 HTML 内容
  * 词典数据通过模板注入，避免额外的消息请求
@@ -7,6 +9,14 @@ import * as vscode from 'vscode';
 export function getWebviewContent(context: vscode.ExtensionContext): string {
     const dict = context.globalState.get<Record<string, string>>('customDict', {});
     const dictJson = JSON.stringify(dict);
+
+    const config = vscode.workspace.getConfiguration('codenames');
+    const baiduAppId = config.get<string>('baiduAppId', '').trim();
+    const baiduSecret = config.get<string>('baiduSecret', '').trim();
+    const engineName = baiduAppId && baiduSecret ? '百度翻译' : 'Google(国内可能不稳定)';
+    const engineBlock = baiduAppId && baiduSecret
+        ? '<div class="hint" style="margin-top:0">百度翻译已启用</div>'
+        : '<div class="hint" style="margin-top:0">前往 <a href="https://api.fanyi.baidu.com/manage/developer">百度翻译开放平台</a> 注册并创建「通用翻译」类型的应用,获取 APP ID 与密钥后填入 <code>codenames.baiduAppId</code> 与 <code>codenames.baiduSecret</code>。</div>';
 
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -158,6 +168,15 @@ export function getWebviewContent(context: vscode.ExtensionContext): string {
             margin-top: 8px;
         }
 
+        .hint a {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: underline;
+        }
+
+        .hint a:hover {
+            color: var(--vscode-textLink-activeForeground);
+        }
+
         .small-btn {
             padding: 4px 10px;
             font-size: 11px;
@@ -180,8 +199,10 @@ export function getWebviewContent(context: vscode.ExtensionContext): string {
             border-bottom: 1px solid var(--border);
             font-size: 12px;
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
+            gap: 6px 8px;
         }
 
         .dict-item:last-child {
@@ -190,7 +211,9 @@ export function getWebviewContent(context: vscode.ExtensionContext): string {
 
         .dict-item .dict-text {
             cursor: pointer;
-            flex: 1;
+            flex: 1 1 100px;
+            min-width: 0;
+            word-break: break-all;
         }
 
         .dict-item .dict-text:hover {
@@ -205,7 +228,7 @@ export function getWebviewContent(context: vscode.ExtensionContext): string {
             background: transparent;
             color: var(--text-sub);
             cursor: pointer;
-            margin-left: 8px;
+            flex-shrink: 0;
         }
 
         .dict-item .remove-btn:hover {
@@ -216,12 +239,14 @@ export function getWebviewContent(context: vscode.ExtensionContext): string {
 
         .dict-form {
             display: flex;
+            flex-wrap: wrap;
             gap: 6px;
             margin-bottom: 10px;
         }
 
         .dict-form input {
-            flex: 1;
+            flex: 1 1 100px;
+            min-width: 0;
             padding: 6px 8px;
             border-radius: 6px;
             border: 1px solid var(--border);
@@ -264,6 +289,14 @@ export function getWebviewContent(context: vscode.ExtensionContext): string {
         </div>
         <div id="dict-list"></div>
     </div>
+
+    <div class="card">
+        <span class="card-title">⚙️ 翻译源</span>
+        <div class="hint" style="margin-top:0">当前: <strong>${engineName}</strong></div>
+        ${engineBlock}
+    </div>
+
+    <div style="text-align:center; margin-top:8px; font-size:10px; color:var(--text-sub);">v${pkg.version}</div>
 
     <script>
         const vscode = acquireVsCodeApi();
@@ -405,8 +438,15 @@ export function getWebviewContent(context: vscode.ExtensionContext): string {
         currentDict = ${dictJson};
         renderDict();
         inp.focus();
+
+        // 外链点击交给扩展通过系统浏览器打开
+        document.querySelectorAll('a[href^="http"]').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                vscode.postMessage({ command: 'openExternal', url: a.href });
+            });
+        });
     </script>
-    <div style="text-align:center; margin-top:8px; font-size:10px; color:var(--text-sub);">v0.0.2</div>
 </body>
 </html>`
 }
