@@ -2,7 +2,6 @@
 node_modules/
 
 # 编译输出
-out/
 dist/
 
 # VSCode 配置

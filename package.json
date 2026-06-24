@@ -1,8 +1,8 @@
 {
 	"name": "codenames",
 	"displayName": "CodeNames",
-	"description": "中英文翻译 & 命名格式生成助手，支持自定义词典、部分匹配，一键生成 6 种常用命名格式",
-	"version": "0.0.7",
+	"description": "中英文翻译 & 命名格式生成助手，支持自定义词典、部分匹配，一键生成 7 种命名格式与 console.log 快捷插入",
+	"version": "0.0.8",
 	"publisher": "wangdanuo",
 	"license": "MIT",
 	"icon": "resources/anbocaixiang.png",
@@ -67,7 +67,24 @@
 					"description": "百度翻译开放平台 密钥(与 APP ID 配套使用)"
 				}
 			}
-		}
+		},
+		"commands": [
+			{
+				"command": "codenames.insertConsoleLog",
+				"title": "插入 console.log",
+				"category": "CodeNames"
+			}
+		],
+		"keybindings": [
+			{
+				"command": "codenames.insertConsoleLog",
+				"key": "shift+ctrl+l",
+				"mac": "shift+cmd+l",
+				"win": "shift+ctrl+l",
+				"linux": "shift+ctrl+l",
+				"when": "editorTextFocus"
+			}
+		]
 	},
 	"scripts": {
 		"compile": "tsc -p ./",
